@@ -198,6 +198,24 @@ class TestFirecrawlWebSearchAuth:
 
         assert transport.requests[-1].headers["authorization"] == "Bearer fc-env"
 
+    @pytest.mark.parametrize("config_key", ["", "  \n"])
+    async def test_blank_config_key_falls_back_to_env(self, transport, monkeypatch, config_key):
+        monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-env")
+        await _search(FirecrawlWebSearchToolConfig(api_key=SecretStr(config_key)))
+
+        assert transport.requests[-1].headers["authorization"] == "Bearer fc-env"
+
+    async def test_blank_config_key_without_env_sends_no_key(self, transport):
+        await _search(FirecrawlWebSearchToolConfig(api_key=SecretStr("")))
+
+        assert "authorization" not in transport.requests[-1].headers
+
+    async def test_config_key_takes_precedence_over_env(self, transport, monkeypatch):
+        monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-env")
+        await _search(FirecrawlWebSearchToolConfig(api_key=SecretStr("fc-from-config")))
+
+        assert transport.requests[-1].headers["authorization"] == "Bearer fc-from-config"
+
     async def test_custom_api_url_needs_no_key(self, transport):
         out = await _search(FirecrawlWebSearchToolConfig(api_url="http://localhost:3002/"))
 

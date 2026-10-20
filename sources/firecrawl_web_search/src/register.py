@@ -169,10 +169,8 @@ async def firecrawl_web_search(
     Yields:
         A `FunctionInfo` wrapping the Firecrawl search callable.
     """
-    api_key = (
-        tool_config.api_key.get_secret_value() if tool_config.api_key else os.environ.get("FIRECRAWL_API_KEY")
-    ) or None
-    api_key = api_key.strip() if api_key else None
+    config_key = tool_config.api_key.get_secret_value().strip() if tool_config.api_key else ""
+    api_key = config_key or (os.environ.get("FIRECRAWL_API_KEY") or "").strip() or None
     base_url = (tool_config.api_url or os.environ.get("FIRECRAWL_API_URL") or _DEFAULT_API_URL).rstrip("/")
 
     global _missing_key_warned
