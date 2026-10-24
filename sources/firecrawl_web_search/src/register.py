@@ -144,7 +144,10 @@ class FirecrawlWebSearchToolConfig(FunctionBaseConfig, name="firecrawl_web_searc
     @field_validator("api_url")
     @classmethod
     def _api_url_has_scheme(cls, value: str | None) -> str | None:
-        if value is not None and not value.startswith(("http://", "https://")):
+        value = value.strip() if value is not None else None
+        if not value:
+            return None
+        if not value.startswith(("http://", "https://")):
             raise ValueError("api_url must start with http:// or https://")
         return value
 

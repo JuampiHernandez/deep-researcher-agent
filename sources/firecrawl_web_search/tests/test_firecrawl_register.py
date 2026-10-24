@@ -229,6 +229,18 @@ class TestFirecrawlWebSearchAuth:
 
         assert str(transport.requests[-1].url) == "https://fc.internal.example/v2/search"
 
+    @pytest.mark.parametrize("api_url", ["", "  \n"])
+    async def test_blank_api_url_falls_back_to_env(self, transport, monkeypatch, api_url):
+        monkeypatch.setenv("FIRECRAWL_API_URL", "https://fc.internal.example")
+        await _search(FirecrawlWebSearchToolConfig(api_url=api_url))
+
+        assert str(transport.requests[-1].url) == "https://fc.internal.example/v2/search"
+
+    async def test_blank_api_url_without_env_uses_default(self, transport):
+        await _search(FirecrawlWebSearchToolConfig(api_url="  "))
+
+        assert str(transport.requests[-1].url) == "https://api.firecrawl.dev/v2/search"
+
     async def test_custom_api_url_still_sends_key_when_set(self, transport):
         await _search(FirecrawlWebSearchToolConfig(api_url="http://localhost:3002", api_key=SecretStr("fc-x")))
 
