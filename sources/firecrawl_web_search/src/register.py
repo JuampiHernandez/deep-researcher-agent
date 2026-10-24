@@ -211,7 +211,7 @@ async def firecrawl_web_search(
             return content[: limit - 3] + "..."
 
         def _render(item: dict) -> str:
-            markdown = _truncate_content(item.get("markdown"))
+            markdown = _truncate_content(item.get("markdown")) if tool_config.scrape_results else ""
             body_text = markdown if markdown else _truncate_content(item.get("description"))
             return _render_document(item.get("url"), item.get("title"), body_text)
 
@@ -267,7 +267,7 @@ async def firecrawl_web_search(
                     return "Error: Web search failed - Firecrawl returned an invalid response"
                 data = payload.get("data") if isinstance(payload, dict) else None
                 results = data.get("web") if isinstance(data, dict) else None
-                if not results:
+                if not isinstance(results, list) or not results:
                     return "Search returned no results"
 
                 documents = [_render(item) for item in results if isinstance(item, dict)]

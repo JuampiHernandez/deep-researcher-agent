@@ -339,6 +339,14 @@ class TestFirecrawlWebSearchResults:
 
         assert "Short desc" in out
 
+    async def test_markdown_ignored_when_not_scraping(self, transport):
+        transport.responses = [httpx.Response(200, json=_web(_item(markdown="# Full page", description="Short desc")))]
+
+        out = await _search(FirecrawlWebSearchToolConfig(api_key=SecretStr("fc-test"), scrape_results=False))
+
+        assert "Short desc" in out
+        assert "Full page" not in out
+
     async def test_truncates_content(self, transport):
         transport.responses = [httpx.Response(200, json=_web(_item(markdown="abcdefghijklmnop")))]
 
@@ -389,7 +397,16 @@ class TestFirecrawlWebSearchResults:
         assert out.startswith("Error: Web search failed")
         assert len(transport.requests) == 1
 
-    @pytest.mark.parametrize("payload", [_web(), _web("not-a-dict"), {"success": True, "data": {}}, {"success": True}])
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            _web(),
+            _web("not-a-dict"),
+            {"success": True, "data": {}},
+            {"success": True},
+            {"success": True, "data": {"web": 1}},
+        ],
+    )
     async def test_empty_results(self, transport, payload):
         transport.responses = [httpx.Response(200, json=payload)]
 
