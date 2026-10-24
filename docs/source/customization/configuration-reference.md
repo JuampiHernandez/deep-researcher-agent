@@ -272,7 +272,7 @@ functions:
 |-----------|------|---------|-------------|
 | `max_results` | `int` | `5` | Maximum number of search results to return (1-100). |
 | `api_key` | `str` | `None` | Firecrawl API key. Optional: without one, requests run under daily per-IP request and credit limits (HTTP 429 when exceeded), which is enough to try it out but not for regular use. Falls back to `FIRECRAWL_API_KEY` environment variable. |
-| `api_url` | `str` | `None` | Firecrawl API base URL. Falls back to `FIRECRAWL_API_URL`, then `https://api.firecrawl.dev`. Set this to use a self-hosted Firecrawl instance. |
+| `api_url` | `str` | `None` | Firecrawl API base URL. Falls back to `FIRECRAWL_API_URL`, then `https://api.firecrawl.dev`. Set this to use a self-hosted Firecrawl instance. An API key is only sent over `https://` or to a loopback host, and never through an environment proxy over plain HTTP; plain `http://` to another host works only without a key, and queries and results then travel unencrypted. The URL is checked when the workflow starts. |
 | `max_retries` | `int` | `3` | Maximum number of attempts (1-10). Rate limits, timeouts, and server errors are retried with backoff. |
 | `scrape_results` | `bool` | `true` | Return each result's page content as Markdown. When `false`, results use the search description only. |
 | `max_content_length` | `int \| None` | `10000` | Max characters per result's text (minimum 1). Total output is about `max_results` x this value. Set to `null` to disable truncation. |

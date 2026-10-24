@@ -247,6 +247,91 @@ class TestFirecrawlWebSearchAuth:
         assert transport.requests[-1].headers["authorization"] == "Bearer fc-x"
 
 
+class TestFirecrawlWebSearchEndpoint:
+    @pytest.mark.parametrize(
+        "api_url",
+        ["http://localhost:3002", "http://127.0.0.1:3002", "http://[::1]:3002", "http://firecrawl.localhost"],
+    )
+    async def test_key_is_sent_over_http_to_loopback(self, transport, api_url):
+        await _search(FirecrawlWebSearchToolConfig(api_url=api_url, api_key=SecretStr("fc-x")))
+
+        assert transport.requests[-1].headers["authorization"] == "Bearer fc-x"
+
+    async def test_key_is_sent_over_https(self, transport):
+        await _search(FirecrawlWebSearchToolConfig(api_url="https://fc.internal.example", api_key=SecretStr("fc-x")))
+
+        assert str(transport.requests[-1].url) == "https://fc.internal.example/v2/search"
+        assert transport.requests[-1].headers["authorization"] == "Bearer fc-x"
+
+    async def test_keyless_http_to_private_host_is_allowed(self, transport):
+        await _search(FirecrawlWebSearchToolConfig(api_url="http://firecrawl-api:3002"))
+
+        assert str(transport.requests[-1].url) == "http://firecrawl-api:3002/v2/search"
+        assert "authorization" not in transport.requests[-1].headers
+
+    async def test_config_key_over_http_to_remote_host_fails_closed(self, transport):
+        with pytest.raises(ValueError, match="plain HTTP"):
+            await _search(FirecrawlWebSearchToolConfig(api_url="http://firecrawl-api:3002", api_key=SecretStr("fc-x")))
+
+        assert transport.requests == []
+
+    async def test_env_key_and_env_url_over_http_fail_closed(self, transport, monkeypatch):
+        monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-env")
+        monkeypatch.setenv("FIRECRAWL_API_URL", "http://10.0.0.5:3002")
+        with pytest.raises(ValueError, match="plain HTTP"):
+            await _search(FirecrawlWebSearchToolConfig())
+
+        assert transport.requests == []
+
+    @pytest.mark.parametrize("env_url", ["localhost:3002", "ftp://fc.internal.example", "http://"])
+    async def test_invalid_env_url_is_rejected(self, transport, monkeypatch, env_url):
+        monkeypatch.setenv("FIRECRAWL_API_URL", env_url)
+        with pytest.raises(ValueError, match="absolute"):
+            await _search(FirecrawlWebSearchToolConfig())
+
+        assert transport.requests == []
+
+    async def test_env_key_and_env_loopback_url_are_allowed(self, transport, monkeypatch):
+        monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-env")
+        monkeypatch.setenv("FIRECRAWL_API_URL", "http://127.0.0.1:3002")
+        await _search(FirecrawlWebSearchToolConfig())
+
+        assert transport.requests[-1].headers["authorization"] == "Bearer fc-env"
+
+    async def test_config_url_without_host_is_rejected(self, transport):
+        with pytest.raises(ValueError, match="absolute"):
+            await _search(FirecrawlWebSearchToolConfig(api_url="http://"))
+
+        assert transport.requests == []
+
+    async def test_uppercase_scheme_is_accepted(self, transport):
+        await _search(FirecrawlWebSearchToolConfig(api_url="HTTP://localhost:3002", api_key=SecretStr("fc-x")))
+
+        assert transport.requests[-1].headers["authorization"] == "Bearer fc-x"
+
+    async def test_key_over_loopback_http_ignores_env_proxies(self, transport, monkeypatch):
+        # MockTransport already bypasses proxies, so check the flag the tool passes to the client.
+        mock_client = httpx.AsyncClient
+        trust_env: list[bool] = []
+
+        def _client(*args, **kwargs):
+            trust_env.append(kwargs.get("trust_env", True))
+            return mock_client(*args, **kwargs)
+
+        monkeypatch.setattr("firecrawl_web_search.register.httpx.AsyncClient", _client)
+        await _search(FirecrawlWebSearchToolConfig(api_url="http://localhost:3002", api_key=SecretStr("fc-x")))
+        await _search(FirecrawlWebSearchToolConfig(api_key=SecretStr("fc-x")))
+        await _search(FirecrawlWebSearchToolConfig(api_url="http://firecrawl-api:3002"))
+
+        assert trust_env == [False, True, True]
+
+    async def test_blank_env_url_uses_default(self, transport, monkeypatch):
+        monkeypatch.setenv("FIRECRAWL_API_URL", "  ")
+        await _search(FirecrawlWebSearchToolConfig())
+
+        assert str(transport.requests[-1].url) == HOSTED_URL
+
+
 class TestFirecrawlWebSearchRequest:
     async def test_default_request_body(self, transport):
         await _search(FirecrawlWebSearchToolConfig(api_key=SecretStr("fc-test"), max_results=3))

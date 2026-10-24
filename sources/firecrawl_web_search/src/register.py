@@ -15,10 +15,12 @@
 
 import asyncio
 import html
+import ipaddress
 import logging
 import os
 import re
 from collections.abc import AsyncGenerator
+from urllib.parse import urlsplit
 
 import httpx
 from pydantic import Field
@@ -94,6 +96,34 @@ def _error_message(response: httpx.Response) -> str:
     return f"HTTP {response.status_code}"
 
 
+def _is_loopback_host(host: str) -> bool:
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _check_endpoint(base_url: str, api_key: str | None) -> None:
+    """Validate the effective endpoint after config and environment fallback.
+
+    Plain HTTP is allowed without an API key; the key is only sent over HTTPS or to a loopback host.
+    """
+    parsed = urlsplit(base_url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError(
+            f"Firecrawl API URL {base_url!r} (from api_url or FIRECRAWL_API_URL) must be an absolute "
+            "http:// or https:// URL"
+        )
+    if api_key and parsed.scheme == "http" and not _is_loopback_host(parsed.hostname):
+        raise ValueError(
+            f"Refusing to send the Firecrawl API key (from api_key or FIRECRAWL_API_KEY) over plain HTTP to "
+            f"{parsed.hostname!r}. Use an https:// URL in api_url or FIRECRAWL_API_URL, or unset the key for an "
+            "unauthenticated self-hosted instance."
+        )
+
+
 def _failure_message(detail: str, has_key: bool) -> str:
     message = f"Error: Web search failed - {detail}"
     if not has_key:
@@ -114,7 +144,8 @@ class FirecrawlWebSearchToolConfig(FunctionBaseConfig, name="firecrawl_web_searc
         default=None,
         description=(
             "Base URL of the Firecrawl API. Falls back to the FIRECRAWL_API_URL environment variable, then to "
-            "https://api.firecrawl.dev. Set this to use a self-hosted Firecrawl instance."
+            "https://api.firecrawl.dev. Set this to use a self-hosted Firecrawl instance. An API key is only sent "
+            "over https:// or to a loopback host."
         ),
     )
     max_retries: int = Field(default=3, ge=1, le=10, description="Maximum number of attempts for the search request")
@@ -147,7 +178,7 @@ class FirecrawlWebSearchToolConfig(FunctionBaseConfig, name="firecrawl_web_searc
         value = value.strip() if value is not None else None
         if not value:
             return None
-        if not value.startswith(("http://", "https://")):
+        if not value.lower().startswith(("http://", "https://")):
             raise ValueError("api_url must start with http:// or https://")
         return value
 
@@ -174,7 +205,11 @@ async def firecrawl_web_search(
     """
     config_key = tool_config.api_key.get_secret_value().strip() if tool_config.api_key else ""
     api_key = config_key or (os.environ.get("FIRECRAWL_API_KEY") or "").strip() or None
-    base_url = (tool_config.api_url or os.environ.get("FIRECRAWL_API_URL") or _DEFAULT_API_URL).rstrip("/")
+    env_url = (os.environ.get("FIRECRAWL_API_URL") or "").strip()
+    base_url = (tool_config.api_url or env_url or _DEFAULT_API_URL).rstrip("/")
+    _check_endpoint(base_url, api_key)
+    # The key only travels over plain HTTP to a loopback host; keep that request off any environment proxy.
+    trust_env = not (api_key and urlsplit(base_url).scheme == "http")
 
     global _missing_key_warned
     if not api_key and base_url == _DEFAULT_API_URL and not _missing_key_warned:
@@ -235,7 +270,7 @@ async def firecrawl_web_search(
 
         for attempt in range(tool_config.max_retries):
             try:
-                async with httpx.AsyncClient(timeout=request_timeout) as client:
+                async with httpx.AsyncClient(timeout=request_timeout, trust_env=trust_env) as client:
                     response = await client.post(search_url, json=body, headers=headers)
 
                 status = response.status_code

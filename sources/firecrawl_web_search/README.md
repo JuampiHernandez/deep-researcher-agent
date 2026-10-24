@@ -20,7 +20,7 @@ Queries (up to 400 characters) are sent to `api.firecrawl.dev` unless `api_url` 
 |-----------|---------|-------------|
 | `max_results` | `5` | Number of results to return (1-100). Total output is about `max_results` x `max_content_length` characters. |
 | `api_key` | `None` | Firecrawl API key (optional, raises rate limits). Falls back to `FIRECRAWL_API_KEY`. |
-| `api_url` | `None` | API base URL. Falls back to `FIRECRAWL_API_URL`, then `https://api.firecrawl.dev`. |
+| `api_url` | `None` | API base URL. Falls back to `FIRECRAWL_API_URL`, then `https://api.firecrawl.dev`. An API key is only sent over `https://` or to a loopback host, and never through an environment proxy over plain HTTP; plain `http://` to another host works only without a key, and queries and results then travel unencrypted. The URL is checked when the workflow starts. |
 | `max_retries` | `3` | Maximum attempts (1-10) for rate limits, timeouts, and server errors. |
 | `scrape_results` | `true` | Return each result's page as Markdown. When `false`, results use the search description only. |
 | `max_content_length` | `10000` | Max characters per result (minimum 1). `null` disables truncation. |
